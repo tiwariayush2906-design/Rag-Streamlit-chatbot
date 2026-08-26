@@ -7,6 +7,7 @@ import tempfile
 import random
 import io
 
+from groq import Groq
 from langchain_community.document_loaders import PyPDFLoader, TextLoader, Docx2txtLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceEmbeddings
@@ -293,23 +294,28 @@ def get_llm():
     if not groq_api_key:
         st.error("🔑 GROQ_API_KEY nahi mili! Streamlit Cloud Settings me Secrets add karein.")
         st.stop()
-    
-    # Active supported models on Groq
-    supported_models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
-    
-    for model_name in supported_models:
-        try:
-            return ChatGroq(
-                model=model_name,
-                temperature=0,
-                groq_api_key=groq_api_key
-            )
-        except Exception:
-            continue
-            
-    # Default fallback
+
+    candidate_models = [
+        "llama-3.1-8b-instant",
+        "llama-3.3-70b-versatile",
+        "mixtral-8x7b-32768",
+        "gemma2-9b-it"
+    ]
+
+    selected_model = "llama-3.1-8b-instant"
+
+    try:
+        client = Groq(api_key=groq_api_key)
+        available_models = [m.id for m in client.models.list().data]
+        for model in candidate_models:
+            if model in available_models:
+                selected_model = model
+                break
+    except Exception:
+        pass
+
     return ChatGroq(
-        model="llama-3.3-70b-versatile",
+        model=selected_model,
         temperature=0,
         groq_api_key=groq_api_key
     )
