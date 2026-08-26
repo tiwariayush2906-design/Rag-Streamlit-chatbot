@@ -293,8 +293,10 @@ def get_llm():
     if not groq_api_key:
         st.error("🔑 GROQ_API_KEY nahi mili! Streamlit Cloud Settings me Secrets add karein.")
         st.stop()
+    
+    # Primary active Groq model
     return ChatGroq(
-        model="llama-3.1-8b-instant",  # Updated active Groq model
+        model="llama3-8b-8192",
         temperature=0,
         groq_api_key=groq_api_key
     )
