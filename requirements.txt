@@ -8,5 +8,5 @@ faiss-cpu
 pypdf
 fpdf2
 python-docx
-pptx 
-openpyxl 
+python-pptx
+openpyxl
