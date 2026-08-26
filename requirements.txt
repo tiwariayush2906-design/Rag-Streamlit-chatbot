@@ -2,6 +2,7 @@ streamlit
 langchain
 langchain-community
 langchain-openai
+langchain-groq
 langchain-text-splitters
 faiss-cpu
 pypdf
