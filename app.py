@@ -6,28 +6,24 @@ import uuid
 import tempfile
 import random
 import io
+
 from langchain_community.document_loaders import PyPDFLoader, TextLoader, Docx2txtLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain_groq import ChatGroq
-from langchain_classic.chains import RetrievalQA
-from langchain_core.prompts import PromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
 from dotenv import load_dotenv
 from fpdf import FPDF
 from docx import Document
 from pptx import Presentation
 from openpyxl import Workbook
 
-# Secrets se key read karna
-groq_api_key = st.secrets["GROQ_API_KEY"]
-
-llm = ChatGroq(
-    groq_api_key=groq_api_key,
-    model_name="llama-3.3-70b-versatile"  # Updated Groq model name
-)
-
 load_dotenv()
+
+# Streamlit secrets ya environment variable se API key fetch karna
+groq_api_key = st.secrets.get("GROQ_API_KEY", os.getenv("GROQ_API_KEY"))
 
 st.set_page_config(page_title="RAG Chatbot", page_icon="🤖", layout="centered", initial_sidebar_state="expanded")
 
@@ -86,7 +82,7 @@ h1 {
 .loading-dots span:nth-child(2) { animation-delay: -0.16s; }
 
 @keyframes bounce {
-    0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; }
+    0%, 80%, 100% { transform: scale(0.6); opacity: 1; }
     40% { transform: scale(1); opacity: 1; }
 }
 
@@ -193,7 +189,7 @@ with st.sidebar:
                 st.rerun()
 
 # =========================================================
-# Dynamic Timezone Based Greeting Fix (Asia/Kolkata IST)
+# Dynamic Timezone Based Greeting (Asia/Kolkata IST)
 # =========================================================
 current_hour = datetime.now(ZoneInfo("Asia/Kolkata")).hour
 
@@ -215,21 +211,20 @@ LANGUAGE_MAP = {
     "hinglish": "Poora answer Hinglish (Hindi-English mix, Roman script) me do."
 }
 
-RAG_PROMPT = """Tum ek intelligent, highly accurate assistant ho jo attached document ke content ke saath kaam karte ho.
+RAG_PROMPT_TEMPLATE = """Tum ek intelligent, highly accurate assistant ho jo attached document ke content ke saath kaam karte ho.
 
 Neeche diya gaya context tumhari attached file(s) ka content hai.
 
-Tumhara kaam:
-- Agar user QUESTION poochta hai, to apni knowledge aur reasoning use karke solve karo, step-by-step.
-- Agar user document ke content ko naye format/style me chahta hai (table, points, summary, rewrite, etc.), to EXACTLY wahi karo.
-- Agar context me relevant information nahi milti (jaise koi general knowledge question, formula, ya fact jo document se related nahi hai), to apni khud ki knowledge use karke sahi answer do — mat bolo "nahi mila", seedha sahi jawab do.
+Recent Chat History:
+{chat_history}
 
-ACCURACY RULES (bahut important hai):
-- Koi bhi number, date, name, ya fact bolne se pehle context ko dhyan se dobara padho — guess mat karo.
-- Agar context me di gayi information se answer clearly confirm nahi hota, to apni general knowledge use karo lekin bilkul saaf batao ki ye context se nahi, general knowledge se hai.
-- Agar tumhe khud bhi answer par 100% confidence nahi hai, to seedha bol do "mujhe iske baare me poora yakeen nahi hai" — kabhi bhi confidently galat jawab mat do.
-- Calculation, formula, ya multi-step logic wale sawaal me pehle step-by-step socho, phir final answer do.
-- Answer dene se pehle khud check karo: "kya ye fact context ya meri knowledge se sahi tarah match karta hai?"
+RESPONSE LENGTH & DETAIL RULES:
+1. Normal Question Par: Exact, compact aur direct answer do.
+2. Explanation Command Par: Jab user keh-e "detail me samjhao", "explain karo", ya "vistaar se batao", tabhi full detailed step-by-step response do.
+
+ACCURACY RULES:
+- Point-to-point exact facts document context se do.
+- Agar context me information na mile (jaise Competitive exams, Government services, Indian laws, graduation subjects, Indian leaders, politics, celebrity bios, formulas, English grammar, coding/SQL, human biology/psychology, defense, ya medical), toh apni internal knowledge base se accurate answer do.
 
 LANGUAGE RULES:
 - {language_instruction}
@@ -241,10 +236,29 @@ User ka message: {question}
 
 Response:"""
 
-GENERAL_SYSTEM_PROMPT = """Tum ek helpful, friendly AI assistant ho, bilkul ChatGPT jaisa. Tum kisi bhi topic pe baat kar sakte ho — general knowledge, coding, advice, casual chat, math, formulas, kuch bhi.
+GENERAL_SYSTEM_PROMPT = """Tum ek universal, highly knowledgeable, aur ultra-accurate AI assistant ho.
 
-Aaj ki date aur time ye hai: {current_datetime}
-Agar user date, din, ya time se related kuch poochta hai, to yehi upar di gayi date/time use karo — apni khud ki guess mat lagao.
+EXPERT KNOWLEDGE AREAS:
+1. COMPETITIVE EXAMS & GOVERNMENT SERVICES: Complete syllabi, exam patterns, eligibility, strategy, previous year trends, officer ranks, pay structures, and job profiles for UPSC (CSE, CAPF, CDS, NDA, ESE), State PSCs, SSC (CGL, CHSL, CPO, JE), Banking & Finance (IBPS, SBI PO/Clerk, RBI Grade B, SEBI, NABARD), Railways (RRB NTPC, JE, ALP), Defence Services, GATE, Judicial Services (PCS-J), and NTA NET/JRF.
+2. INDIAN LAW, RULES & CONSTITUTION: Complete Indian legal system, Constitution of India (Articles, Fundamental Rights, Writs, Amendments, Landmark Judgments), Bharatiya Nyaya Sanhita (BNS), Bharatiya Nagarik Suraksha Sanhita (BNSS), Bharatiya Sakshya Adhiniyam (BSA), Contract Act, Company Law, Cyber Laws, Tax Laws (GST & Income Tax), Family Laws, and Consumer Protection.
+3. GRADUATION & HIGHER EDUCATION SUBJECTS: Deep academic knowledge across B.Tech/BCA/MCA (Computer Science, Data Structures, Engineering Math), B.Sc (Physics, Chemistry, Advanced Mathematics, Bio-tech), B.Com/BBA/MBA (Accounting, Economics, Business Law, Finance), and B.A. (Political Science, Sociology, History, Public Administration, Literature).
+4. LEADERS, HISTORY & POLITICS: Current & historical leaders of India & world, biographies, political parties (ideologies, history, structures), freedom movement, Indian dynasties, and geopolitical developments.
+5. CELEBRITIES & BIOGRAPHIES: Detailed biographies, career timelines, achievements of famous personalities across movies, sports, arts, science, and business.
+6. FORMULAS & SCIENTIFIC LAWS: Comprehensive mathematical formulas, Physics principles/equations, Chemical reactions, and engineering calculations.
+7. ENGLISH GRAMMAR & LANGUAGE: Syntax, parts of speech, tense usage, voice, narration, clause structure, idioms, advanced vocabulary, and writing techniques.
+8. CODING & SQL: Python, JavaScript, C++, Java, Web Development, Database Management, SQL queries, Data Structures, Algorithms, and debugging.
+9. HUMAN ANATOMY & PSYCHOLOGY: Human biological systems, organ functions, medical physiology, cognitive psychology, emotional intelligence, and human behavior.
+10. MILITARY, DEFENSE & MEDICINE: Armed forces, strategic weapons, medicines, formulations, ointments/tubes, and emergency first-aid.
+
+Aaj ki date aur time: {current_datetime}
+Agar user "aaj", "aaj ka din", ya current date se related poochta hai, tabhi upar di gayi date use karo.
+
+Recent Chat History:
+{chat_history}
+
+RESPONSE STYLE RULES:
+- Fast & Direct: Normal query par fast, point-to-point accurate answer do.
+- Deep Explanation On Request: "Explain karo", "detail me samjhao", "vistaar se batao" kahne par hi thorough detailed explanation do.
 
 LANGUAGE RULES:
 - {language_instruction}
@@ -258,13 +272,11 @@ Draft Answer:
 {draft_answer}
 
 Tumhara kaam:
-1. Draft answer ko dhyan se check karo - koi factual mistake, galat number, galat naam, galat calculation, ya hallucination to nahi hai.
-2. Agar context diya gaya hai, to answer ko us context ke against verify karo - kya answer context se match karta hai.
-3. Agar draft answer already sahi hai, to usko as-it-is wapas bhej do.
-4. Agar koi mistake milti hai, to use silently fix karke corrected final answer do.
-5. Agar kisi fact par tumhe khud bhi poora confidence nahi hai, to answer me ek chhoti si caveat add karo.
+1. Check karo ki koi Competitive Exam rule, Government Service details, Legal fault (Indian Laws/Articles), Academic concept error, Factual inaccuracy, Political mistake, Formula flaw, ya Code bug na ho.
+2. Normal queries ke liye compact short response aur explicitly detail mange jane par thorough detailed format maintain rakho.
+3. Silent fix karke clean, highly accurate final output do.
 
-Sirf final answer do - koi meta-commentary mat likho. Seedha clean final answer likho, same language me jisme draft hai."""
+Sirf clean final answer do - koi meta-commentary mat likho."""
 
 
 @st.cache_resource
@@ -275,10 +287,9 @@ def get_embeddings():
 @st.cache_resource
 def get_llm():
     return ChatGroq(
-        model="qwen/qwen3.6-27b",
+        model="llama-3.3-70b-versatile",
         temperature=0,
-        groq_api_key=os.getenv("GROQ_API_KEY"),
-        reasoning_format="hidden"
+        groq_api_key=groq_api_key
     )
 
 
@@ -328,7 +339,8 @@ def process_file(uploaded_file):
     chunks = splitter.split_documents(documents)
 
     embeddings = get_embeddings()
-    collection_name = f"chat_{st.session_state.current_chat_id}"
+    collection_name = f"chat_{st.session_state.current_chat_id}".replace("-", "_")
+    
     if chat["vectorstore"] is None:
         chat["vectorstore"] = Chroma.from_documents(
             documents=chunks, embedding=embeddings, collection_name=collection_name
@@ -339,7 +351,7 @@ def process_file(uploaded_file):
     os.unlink(tmp_path)
     chat["retriever"] = chat["vectorstore"].as_retriever(
         search_type="mmr",
-        search_kwargs={"k": 8, "fetch_k": 20, "lambda_mult": 0.7}
+        search_kwargs={"k": 5, "fetch_k": 10, "lambda_mult": 0.7}
     )
 
 
@@ -507,26 +519,33 @@ if user_query:
             language_instruction = LANGUAGE_MAP[st.session_state.response_language]
             llm = get_llm()
 
-            if chat["retriever"] is not None:
-                prompt = PromptTemplate(
-                    template=RAG_PROMPT,
-                    input_variables=["context", "question", "language_instruction"]
-                ).partial(language_instruction=language_instruction)
+            # Format recent chat history (last 6 messages)
+            recent_messages = chat["messages"][-6:]
+            history_text = ""
+            for m in recent_messages:
+                role_label = "User" if m["role"] == "user" else "Assistant"
+                history_text += f"{role_label}: {m['content']}\n"
 
-                qa_chain = RetrievalQA.from_chain_type(
-                    llm=llm, chain_type="stuff",
-                    retriever=chat["retriever"],
-                    return_source_documents=True,
-                    chain_type_kwargs={"prompt": prompt}
-                )
-                result = qa_chain.invoke({"query": user_query})
-                draft_answer = result["result"]
-                source_docs = result.get("source_documents")
+            if chat["retriever"] is not None:
+                source_docs = chat["retriever"].invoke(user_query)
+                context_text = "\n\n".join(doc.page_content for doc in source_docs)
+
+                rag_prompt = ChatPromptTemplate.from_template(RAG_PROMPT_TEMPLATE)
+                chain = rag_prompt | llm | StrOutputParser()
+
+                draft_answer = chain.invoke({
+                    "context": context_text,
+                    "question": user_query,
+                    "language_instruction": language_instruction,
+                    "chat_history": history_text
+                })
             else:
                 current_datetime = datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%A, %d %B %Y, %I:%M %p")
+                
                 system_msg = GENERAL_SYSTEM_PROMPT.format(
                     language_instruction=language_instruction,
-                    current_datetime=current_datetime
+                    current_datetime=current_datetime,
+                    chat_history=history_text
                 )
                 response = llm.invoke([
                     ("system", system_msg),
