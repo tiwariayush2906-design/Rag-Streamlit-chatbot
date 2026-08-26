@@ -1,5 +1,6 @@
 import streamlit as st
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import os
 import uuid
 import tempfile
@@ -17,8 +18,6 @@ from fpdf import FPDF
 from docx import Document
 from pptx import Presentation
 from openpyxl import Workbook
-import streamlit as st
-from langchain_groq import ChatGroq
 
 # Secrets se key read karna
 groq_api_key = st.secrets["GROQ_API_KEY"]
@@ -193,13 +192,19 @@ with st.sidebar:
                 switch_chat(cid)
                 st.rerun()
 
-current_hour = datetime.now().hour
-if current_hour < 12:
+# =========================================================
+# Dynamic Timezone Based Greeting Fix (Asia/Kolkata IST)
+# =========================================================
+current_hour = datetime.now(ZoneInfo("Asia/Kolkata")).hour
+
+if 5 <= current_hour < 12:
     greeting = "Good morning"
-elif current_hour < 17:
+elif 12 <= current_hour < 17:
     greeting = "Good afternoon"
-else:
+elif 17 <= current_hour < 21:
     greeting = "Good evening"
+else:
+    greeting = "Good night"
 
 st.markdown(f"<h1>🌟 {greeting}, dost!</h1>", unsafe_allow_html=True)
 st.markdown('<p class="subtitle">How can I help you today?</p>', unsafe_allow_html=True)
@@ -518,7 +523,7 @@ if user_query:
                 draft_answer = result["result"]
                 source_docs = result.get("source_documents")
             else:
-                current_datetime = datetime.now().strftime("%A, %d %B %Y, %I:%M %p")
+                current_datetime = datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%A, %d %B %Y, %I:%M %p")
                 system_msg = GENERAL_SYSTEM_PROMPT.format(
                     language_instruction=language_instruction,
                     current_datetime=current_datetime
