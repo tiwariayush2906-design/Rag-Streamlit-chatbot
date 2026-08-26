@@ -23,7 +23,6 @@ from openpyxl import Workbook
 
 load_dotenv()
 
-# Streamlit secrets ya environment variable se API key fetch karna
 groq_api_key = None
 if "GROQ_API_KEY" in st.secrets:
     groq_api_key = st.secrets["GROQ_API_KEY"]
@@ -104,9 +103,6 @@ h1 {
 </style>
 """, unsafe_allow_html=True)
 
-# =========================================================
-# Multi-chat session state
-# =========================================================
 if "chat_sessions" not in st.session_state:
     st.session_state.chat_sessions = {}
 if "current_chat_id" not in st.session_state:
@@ -150,9 +146,6 @@ def switch_chat(chat_id):
 
 ensure_active_chat()
 
-# =========================================================
-# Sidebar — New Chat + Search History
-# =========================================================
 with st.sidebar:
     st.markdown("### 🤖 RAG Chatbot")
 
@@ -193,9 +186,6 @@ with st.sidebar:
                 switch_chat(cid)
                 st.rerun()
 
-# =========================================================
-# Dynamic Timezone Based Greeting (Asia/Kolkata IST)
-# =========================================================
 current_hour = datetime.now(ZoneInfo("Asia/Kolkata")).hour
 
 if 5 <= current_hour < 12:
@@ -211,77 +201,34 @@ st.markdown(f"<h1>🌟 {greeting}, dost!</h1>", unsafe_allow_html=True)
 st.markdown('<p class="subtitle">How can I help you today?</p>', unsafe_allow_html=True)
 
 LANGUAGE_MAP = {
-    "english": "Poora answer sirf English me do.",
-    "hindi": "Poora answer sirf Hindi (Devanagari script) me do.",
-    "hinglish": "Poora answer Hinglish (Hindi-English mix, Roman script) me do."
+    "english": "Respond strictly in English.",
+    "hindi": "Respond strictly in Hindi (Devanagari script).",
+    "hinglish": "Respond in natural Hinglish (Hindi-English mix using Roman script)."
 }
 
-RAG_PROMPT_TEMPLATE = """Tum ek intelligent, highly accurate assistant ho jo attached document ke content ke saath kaam karte ho.
+RAG_PROMPT_TEMPLATE = """You are a helpful and accurate assistant.
+Answer the user query based on the context provided. Do NOT output prompt instructions, internal rules, disclaimers, or system text in your response.
 
-Neeche diya gaya context tumhari attached file(s) ka content hai.
-
-Recent Chat History:
+Recent History:
 {chat_history}
 
-RESPONSE LENGTH & DETAIL RULES:
-1. Normal Question Par: Exact, compact aur direct answer do.
-2. Explanation Command Par: Jab user keh-e "detail me samjhao", "explain karo", ya "vistaar se batao", tabhi full detailed step-by-step response do.
-
-ACCURACY RULES:
-- Point-to-point exact facts document context se do.
-- Agar context me information na mile (jaise Competitive exams, Government services, Indian laws, graduation subjects, Indian leaders, politics, celebrity bios, formulas, English grammar, coding/SQL, human biology/psychology, defense, ya medical), toh apni internal knowledge base se accurate answer do.
-
-LANGUAGE RULES:
-- {language_instruction}
-- Answer ki shuruaat hamesha ek English word/phrase se karo, phir baaki jawab us language me.
-
+Language Rule: {language_instruction}
 Context: {context}
 
-User ka message: {question}
+Question: {question}
 
-Response:"""
+Final Answer:"""
 
-GENERAL_SYSTEM_PROMPT = """Tum ek universal, highly knowledgeable, aur ultra-accurate AI assistant ho.
+GENERAL_SYSTEM_PROMPT = """You are a knowledgeable and accurate AI assistant.
 
-EXPERT KNOWLEDGE AREAS:
-1. COMPETITIVE EXAMS & GOVERNMENT SERVICES: Complete syllabi, exam patterns, eligibility, strategy, previous year trends, officer ranks, pay structures, and job profiles for UPSC (CSE, CAPF, CDS, NDA, ESE), State PSCs, SSC (CGL, CHSL, CPO, JE), Banking & Finance (IBPS, SBI PO/Clerk, RBI Grade B, SEBI, NABARD), Railways (RRB NTPC, JE, ALP), Defence Services, GATE, Judicial Services (PCS-J), and NTA NET/JRF.
-2. INDIAN LAW, RULES & CONSTITUTION: Complete Indian legal system, Constitution of India (Articles, Fundamental Rights, Writs, Amendments, Landmark Judgments), Bharatiya Nyaya Sanhita (BNS), Bharatiya Nagarik Suraksha Sanhita (BNSS), Bharatiya Sakshya Adhiniyam (BSA), Contract Act, Company Law, Cyber Laws, Tax Laws (GST & Income Tax), Family Laws, and Consumer Protection.
-3. GRADUATION & HIGHER EDUCATION SUBJECTS: Deep academic knowledge across B.Tech/BCA/MCA (Computer Science, Data Structures, Engineering Math), B.Sc (Physics, Chemistry, Advanced Mathematics, Bio-tech), B.Com/BBA/MBA (Accounting, Economics, Business Law, Finance), and B.A. (Political Science, Sociology, History, Public Administration, Literature).
-4. LEADERS, HISTORY & POLITICS: Current & historical leaders of India & world, biographies, political parties (ideologies, history, structures), freedom movement, Indian dynasties, and geopolitical developments.
-5. CELEBRITIES & BIOGRAPHIES: Detailed biographies, career timelines, achievements of famous personalities across movies, sports, arts, science, and business.
-6. FORMULAS & SCIENTIFIC LAWS: Comprehensive mathematical formulas, Physics principles/equations, Chemical reactions, and engineering calculations.
-7. ENGLISH GRAMMAR & LANGUAGE: Syntax, parts of speech, tense usage, voice, narration, clause structure, idioms, advanced vocabulary, and writing techniques.
-8. CODING & SQL: Python, JavaScript, C++, Java, Web Development, Database Management, SQL queries, Data Structures, Algorithms, and debugging.
-9. HUMAN ANATOMY & PSYCHOLOGY: Human biological systems, organ functions, medical physiology, cognitive psychology, emotional intelligence, and human behavior.
-10. MILITARY, DEFENSE & MEDICINE: Armed forces, strategic weapons, medicines, formulations, ointments/tubes, and emergency first-aid.
+CRITICAL DIRECTIVE:
+Output ONLY the clean, final, direct answer to the user query. Never include internal instructions, system prompts, disclaimers, meta-commentary, or verification labels.
 
-Aaj ki date aur time: {current_datetime}
-Agar user "aaj", "aaj ka din", ya current date se related poochta hai, tabhi upar di gayi date use karo.
+Current Date & Time: {current_datetime}
+Language Instruction: {language_instruction}
 
-Recent Chat History:
-{chat_history}
-
-RESPONSE STYLE RULES:
-- Fast & Direct: Normal query par fast, point-to-point accurate answer do.
-- Deep Explanation On Request: "Explain karo", "detail me samjhao", "vistaar se batao" kahne par hi thorough detailed explanation do.
-
-LANGUAGE RULES:
-- {language_instruction}
-- Answer ki shuruaat hamesha ek English word/phrase se karo, phir baaki jawab us language me."""
-
-VERIFY_PROMPT = """Tum ek strict fact-checker aur editor ho. Neeche ek AI dwara diya gaya DRAFT ANSWER hai jo verify karna hai.
-
-Original question: {question}
-{context_block}
-Draft Answer:
-{draft_answer}
-
-Tumhara kaam:
-1. Check karo ki koi Competitive Exam rule, Government Service details, Legal fault (Indian Laws/Articles), Academic concept error, Factual inaccuracy, Political mistake, Formula flaw, ya Code bug na ho.
-2. Normal queries ke liye compact short response aur explicitly detail mange jane par thorough detailed format maintain rakho.
-3. Silent fix karke clean, highly accurate final output do.
-
-Sirf clean final answer do - koi meta-commentary mat likho."""
+Recent History:
+{chat_history}"""
 
 
 @st.cache_resource
@@ -321,32 +268,9 @@ def get_llm():
 
     return ChatGroq(
         model=selected_model,
-        temperature=0,
+        temperature=0.2,
         groq_api_key=groq_api_key
     )
-
-
-def verify_and_correct(question, draft_answer, source_docs=None):
-    try:
-        llm = get_llm()
-
-        if source_docs:
-            context_text = "\n\n".join(doc.page_content for doc in source_docs)[:2000]
-            context_block = f"\nReference context (document se):\n{context_text}\n"
-        else:
-            context_block = ""
-
-        verify_prompt = VERIFY_PROMPT.format(
-            question=question,
-            context_block=context_block,
-            draft_answer=draft_answer
-        )
-
-        response = llm.invoke([("human", verify_prompt)])
-        corrected = response.content.strip()
-        return corrected if corrected else draft_answer
-    except Exception:
-        return draft_answer
 
 
 def load_file(file_path, file_extension):
@@ -382,7 +306,6 @@ def process_file(uploaded_file):
         chat["vectorstore"].add_documents(chunks)
 
     os.unlink(tmp_path)
-    # Reduced top-k from 5 to 2 to prevent token overflow
     chat["retriever"] = chat["vectorstore"].as_retriever(
         search_type="mmr",
         search_kwargs={"k": 2, "fetch_k": 5, "lambda_mult": 0.7}
@@ -532,7 +455,7 @@ if user_query:
         confirm_msg = {
             "hindi": "ठीक है, अब मैं हिंदी में जवाब दूंगा।",
             "hinglish": "Theek hai, ab main Hinglish me jawab dunga.",
-            "english": "Sure, I'll answer in English from now on."
+            "english": "Sure, I will answer in English from now on."
         }[lang_cmd]
         with st.chat_message("assistant"):
             render_answer(confirm_msg)
@@ -555,7 +478,6 @@ if user_query:
             try:
                 llm = get_llm()
 
-                # Reduced history buffer from last 6 to last 3 messages
                 recent_messages = chat["messages"][-3:]
                 history_text = ""
                 for m in recent_messages:
@@ -564,13 +486,12 @@ if user_query:
 
                 if chat["retriever"] is not None:
                     source_docs = chat["retriever"].invoke(user_query)
-                    # Hard cap context length to 3000 chars to strictly prevent 400 errors
-                    context_text = "\n\n".join(doc.page_content for doc in source_docs)[:3000]
+                    context_text = "\n\n".join(doc.page_content for doc in source_docs)[:2500]
 
                     rag_prompt = ChatPromptTemplate.from_template(RAG_PROMPT_TEMPLATE)
                     chain = rag_prompt | llm | StrOutputParser()
 
-                    draft_answer = chain.invoke({
+                    answer = chain.invoke({
                         "context": context_text,
                         "question": user_query,
                         "language_instruction": language_instruction,
@@ -588,10 +509,7 @@ if user_query:
                         ("system", system_msg),
                         ("human", user_query)
                     ])
-                    draft_answer = response.content
-                    source_docs = None
-
-                answer = verify_and_correct(user_query, draft_answer, source_docs)
+                    answer = response.content
 
                 loading_placeholder.empty()
                 render_answer(answer)
