@@ -269,6 +269,7 @@ def get_llm():
     return ChatGroq(
         model=selected_model,
         temperature=0.2,
+        max_tokens=1024,
         groq_api_key=groq_api_key
     )
 
@@ -292,24 +293,20 @@ def process_file(uploaded_file):
         tmp_path = tmp_file.name
 
     documents = load_file(tmp_path, file_extension)
-    # Reduced chunk_size and overlap to cut down token payload
-    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+    splitter = RecursiveCharacterTextSplitter(chunk_size=400, chunk_overlap=30)
     chunks = splitter.split_documents(documents)
 
     embeddings = get_embeddings()
     collection_name = f"chat_{st.session_state.current_chat_id}".replace("-", "_")
     
-    if chat["vectorstore"] is None:
-        chat["vectorstore"] = Chroma.from_documents(
-            documents=chunks, embedding=embeddings, collection_name=collection_name
-        )
-    else:
-        chat["vectorstore"].add_documents(chunks)
+    chat["vectorstore"] = Chroma.from_documents(
+        documents=chunks, embedding=embeddings, collection_name=collection_name
+    )
 
     os.unlink(tmp_path)
     chat["retriever"] = chat["vectorstore"].as_retriever(
-        search_type="mmr",
-        search_kwargs={"k": 2, "fetch_k": 4, "lambda_mult": 0.7}
+        search_type="similarity",
+        search_kwargs={"k": 2}
     )
 
 
@@ -479,17 +476,15 @@ if user_query:
             try:
                 llm = get_llm()
 
-                # Reduced chat history limit per prompt
                 recent_messages = chat["messages"][-2:]
                 history_text = ""
                 for m in recent_messages:
                     role_label = "User" if m["role"] == "user" else "Assistant"
-                    history_text += f"{role_label}: {m['content'][:150]}\n"
+                    history_text += f"{role_label}: {m['content'][:100]}\n"
 
                 if chat["retriever"] is not None:
                     source_docs = chat["retriever"].invoke(user_query)
-                    # Reduced context truncation cap to 1200 chars
-                    context_text = "\n\n".join(doc.page_content for doc in source_docs)[:1200]
+                    context_text = "\n".join(doc.page_content for doc in source_docs)[:800]
 
                     rag_prompt = ChatPromptTemplate.from_template(RAG_PROMPT_TEMPLATE)
                     chain = rag_prompt | llm | StrOutputParser()
