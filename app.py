@@ -17,6 +17,16 @@ from fpdf import FPDF
 from docx import Document
 from pptx import Presentation
 from openpyxl import Workbook
+import streamlit as st
+from langchain_groq import ChatGroq
+
+# Secrets se key read karna
+groq_api_key = st.secrets["GROQ_API_KEY"]
+
+llm = ChatGroq(
+    groq_api_key=groq_api_key,
+    model_name="llama-3.3-70b-versatile"  # Updated Groq model name
+)
 
 load_dotenv()
 
