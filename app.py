@@ -295,24 +295,34 @@ def get_llm():
         st.error("🔑 GROQ_API_KEY nahi mili! Streamlit Cloud Settings me Secrets add karein.")
         st.stop()
 
+    # Preferred models in order of priority
     candidate_models = [
-        "llama-3.1-8b-instant",
         "llama-3.3-70b-versatile",
+        "llama-3.1-8b-instant",
         "mixtral-8x7b-32768",
         "gemma2-9b-it"
     ]
 
-    selected_model = "llama-3.1-8b-instant"
+    selected_model = None
 
     try:
+        # Fetch active models directly from Groq API
         client = Groq(api_key=groq_api_key)
         available_models = [m.id for m in client.models.list().data]
+        
+        # Pick the first matching candidate that exists on Groq
         for model in candidate_models:
             if model in available_models:
                 selected_model = model
                 break
+
+        # Fallback to the first available model if none of the candidates match
+        if not selected_model and available_models:
+            selected_model = available_models[0]
+
     except Exception:
-        pass
+        # Default fallback string if the client fails to fetch model list
+        selected_model = "llama-3.3-70b-versatile"
 
     return ChatGroq(
         model=selected_model,
