@@ -23,7 +23,11 @@ from openpyxl import Workbook
 load_dotenv()
 
 # Streamlit secrets ya environment variable se API key fetch karna
-groq_api_key = st.secrets.get("GROQ_API_KEY", os.getenv("GROQ_API_KEY"))
+groq_api_key = None
+if "GROQ_API_KEY" in st.secrets:
+    groq_api_key = st.secrets["GROQ_API_KEY"]
+else:
+    groq_api_key = os.getenv("GROQ_API_KEY")
 
 st.set_page_config(page_title="RAG Chatbot", page_icon="🤖", layout="centered", initial_sidebar_state="expanded")
 
@@ -286,6 +290,9 @@ def get_embeddings():
 
 @st.cache_resource
 def get_llm():
+    if not groq_api_key:
+        st.error("🔑 GROQ_API_KEY nahi mili! Streamlit Cloud Settings me Secrets add karein.")
+        st.stop()
     return ChatGroq(
         model="llama-3.3-70b-versatile",
         temperature=0,
@@ -294,21 +301,21 @@ def get_llm():
 
 
 def verify_and_correct(question, draft_answer, source_docs=None):
-    llm = get_llm()
-
-    if source_docs:
-        context_text = "\n\n".join(doc.page_content for doc in source_docs)
-        context_block = f"\nReference context (document se):\n{context_text}\n"
-    else:
-        context_block = ""
-
-    verify_prompt = VERIFY_PROMPT.format(
-        question=question,
-        context_block=context_block,
-        draft_answer=draft_answer
-    )
-
     try:
+        llm = get_llm()
+
+        if source_docs:
+            context_text = "\n\n".join(doc.page_content for doc in source_docs)
+            context_block = f"\nReference context (document se):\n{context_text}\n"
+        else:
+            context_block = ""
+
+        verify_prompt = VERIFY_PROMPT.format(
+            question=question,
+            context_block=context_block,
+            draft_answer=draft_answer
+        )
+
         response = llm.invoke([("human", verify_prompt)])
         corrected = response.content.strip()
         return corrected if corrected else draft_answer
@@ -517,57 +524,63 @@ if user_query:
             )
 
             language_instruction = LANGUAGE_MAP[st.session_state.response_language]
-            llm = get_llm()
+            
+            try:
+                llm = get_llm()
 
-            # Format recent chat history (last 6 messages)
-            recent_messages = chat["messages"][-6:]
-            history_text = ""
-            for m in recent_messages:
-                role_label = "User" if m["role"] == "user" else "Assistant"
-                history_text += f"{role_label}: {m['content']}\n"
+                # Format recent chat history (last 6 messages)
+                recent_messages = chat["messages"][-6:]
+                history_text = ""
+                for m in recent_messages:
+                    role_label = "User" if m["role"] == "user" else "Assistant"
+                    history_text += f"{role_label}: {m['content']}\n"
 
-            if chat["retriever"] is not None:
-                source_docs = chat["retriever"].invoke(user_query)
-                context_text = "\n\n".join(doc.page_content for doc in source_docs)
+                if chat["retriever"] is not None:
+                    source_docs = chat["retriever"].invoke(user_query)
+                    context_text = "\n\n".join(doc.page_content for doc in source_docs)
 
-                rag_prompt = ChatPromptTemplate.from_template(RAG_PROMPT_TEMPLATE)
-                chain = rag_prompt | llm | StrOutputParser()
+                    rag_prompt = ChatPromptTemplate.from_template(RAG_PROMPT_TEMPLATE)
+                    chain = rag_prompt | llm | StrOutputParser()
 
-                draft_answer = chain.invoke({
-                    "context": context_text,
-                    "question": user_query,
-                    "language_instruction": language_instruction,
-                    "chat_history": history_text
-                })
-            else:
-                current_datetime = datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%A, %d %B %Y, %I:%M %p")
-                
-                system_msg = GENERAL_SYSTEM_PROMPT.format(
-                    language_instruction=language_instruction,
-                    current_datetime=current_datetime,
-                    chat_history=history_text
-                )
-                response = llm.invoke([
-                    ("system", system_msg),
-                    ("human", user_query)
-                ])
-                draft_answer = response.content
-                source_docs = None
+                    draft_answer = chain.invoke({
+                        "context": context_text,
+                        "question": user_query,
+                        "language_instruction": language_instruction,
+                        "chat_history": history_text
+                    })
+                else:
+                    current_datetime = datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%A, %d %B %Y, %I:%M %p")
+                    
+                    system_msg = GENERAL_SYSTEM_PROMPT.format(
+                        language_instruction=language_instruction,
+                        current_datetime=current_datetime,
+                        chat_history=history_text
+                    )
+                    response = llm.invoke([
+                        ("system", system_msg),
+                        ("human", user_query)
+                    ])
+                    draft_answer = response.content
+                    source_docs = None
 
-            answer = verify_and_correct(user_query, draft_answer, source_docs)
+                answer = verify_and_correct(user_query, draft_answer, source_docs)
 
-            loading_placeholder.empty()
-            render_answer(answer)
+                loading_placeholder.empty()
+                render_answer(answer)
 
-            file_format = detect_file_format(user_query)
-            if file_format:
-                gen_func, mime, filename = FILE_GENERATORS[file_format]
-                file_bytes = gen_func(answer)
-                st.download_button(
-                    label=f"📥 Download as {file_format.upper()}",
-                    data=file_bytes,
-                    file_name=filename,
-                    mime=mime
-                )
+                file_format = detect_file_format(user_query)
+                if file_format:
+                    gen_func, mime, filename = FILE_GENERATORS[file_format]
+                    file_bytes = gen_func(answer)
+                    st.download_button(
+                        label=f"📥 Download as {file_format.upper()}",
+                        data=file_bytes,
+                        file_name=filename,
+                        mime=mime
+                    )
 
-        chat["messages"].append({"role": "assistant", "content": answer})
+                chat["messages"].append({"role": "assistant", "content": answer})
+
+            except Exception as e:
+                loading_placeholder.empty()
+                st.error(f"⚠️ API Call Error: {str(e)}")
