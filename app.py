@@ -31,6 +31,18 @@ else:
 
 st.set_page_config(page_title="RAG Chatbot", page_icon="🤖", layout="centered", initial_sidebar_state="expanded")
 
+# Theme state management
+if "theme" not in st.session_state:
+    st.session_state.theme = "Dark"
+
+# Dynamic Theme Colors setup
+if st.session_state.theme == "Dark":
+    card_bg_colors = ["#1e1e1e", "#1b3a4b", "#2d1b4e", "#1b4d3e", "#4d1b1b", "#4d3a1b", "#1b4d4d", "#3a1b4d"]
+    card_text_color = "#f5f5f5"
+else:
+    card_bg_colors = ["#f0f2f6", "#e2e8f0", "#edf2f7", "#e6fffa", "#fff5f5", "#fefcbf", "#ebf8ff", "#f3e8ff"]
+    card_text_color = "#1a1a1a"
+
 st.markdown("""
 <style>
 #MainMenu, footer {visibility: hidden;}
@@ -148,6 +160,17 @@ ensure_active_chat()
 
 with st.sidebar:
     st.markdown("### 🤖 RAG Chatbot")
+
+    # Theme Toggle Radio Button
+    selected_theme = st.radio(
+        "🎨 Theme Mode",
+        ["Dark", "Light"],
+        index=0 if st.session_state.theme == "Dark" else 1,
+        horizontal=True
+    )
+    if selected_theme != st.session_state.theme:
+        st.session_state.theme = selected_theme
+        st.rerun()
 
     if st.button("➕ New Chat", use_container_width=True, type="primary"):
         start_new_chat()
@@ -334,22 +357,10 @@ def detect_file_format(text):
     return None
 
 
-ANSWER_COLORS = [
-    "#1e1e1e",
-    "#1b3a4b",
-    "#2d1b4e",
-    "#1b4d3e",
-    "#4d1b1b",
-    "#4d3a1b",
-    "#1b4d4d",
-    "#3a1b4d",
-]
-
-
 def render_answer(text):
-    color = random.choice(ANSWER_COLORS)
+    color = random.choice(card_bg_colors)
     st.markdown(
-        f"""<div style="background-color:{color};color:#f5f5f5;padding:16px;
+        f"""<div style="background-color:{color};color:{card_text_color};padding:16px;
         border-radius:10px;line-height:1.6;font-size:16px;white-space:pre-wrap;">{text}</div>""",
         unsafe_allow_html=True
     )
