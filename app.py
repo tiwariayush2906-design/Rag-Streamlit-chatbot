@@ -176,7 +176,7 @@ with st.sidebar:
         ]
 
     if not visible_chats:
-        st.markdown('<p class="sidebar-empty">Abhi koi purani chat nahi hai.</p>', unsafe_allow_html=True)
+        st.markdown('<p class="sidebar-empty">There is no chat history available.</p>', unsafe_allow_html=True)
     else:
         for cid in visible_chats:
             chat_item = st.session_state.chat_sessions[cid]
@@ -189,15 +189,15 @@ with st.sidebar:
 current_hour = datetime.now(ZoneInfo("Asia/Kolkata")).hour
 
 if 5 <= current_hour < 12:
-    greeting = "Good morning"
+    greeting = "Good Morning"
 elif 12 <= current_hour < 17:
-    greeting = "Good afternoon"
+    greeting = "Good Afternoon"
 elif 17 <= current_hour < 21:
-    greeting = "Good evening"
+    greeting = "Good Evening"
 else:
-    greeting = "Good night"
+    greeting = "Good Night"
 
-st.markdown(f"<h1>🌟 {greeting}, dost!</h1>", unsafe_allow_html=True)
+st.markdown(f"<h1>🌟 {greeting}, Dost!</h1>", unsafe_allow_html=True)
 st.markdown('<p class="subtitle">How can I help you today?</p>', unsafe_allow_html=True)
 
 LANGUAGE_MAP = {
