@@ -295,7 +295,6 @@ def get_llm():
         st.error("🔑 GROQ_API_KEY nahi mili! Streamlit Cloud Settings me Secrets add karein.")
         st.stop()
 
-    # Preferred models in order of priority
     candidate_models = [
         "llama-3.3-70b-versatile",
         "llama-3.1-8b-instant",
@@ -306,22 +305,18 @@ def get_llm():
     selected_model = None
 
     try:
-        # Fetch active models directly from Groq API
         client = Groq(api_key=groq_api_key)
         available_models = [m.id for m in client.models.list().data]
         
-        # Pick the first matching candidate that exists on Groq
         for model in candidate_models:
             if model in available_models:
                 selected_model = model
                 break
 
-        # Fallback to the first available model if none of the candidates match
         if not selected_model and available_models:
             selected_model = available_models[0]
 
     except Exception:
-        # Default fallback string if the client fails to fetch model list
         selected_model = "llama-3.3-70b-versatile"
 
     return ChatGroq(
@@ -336,7 +331,7 @@ def verify_and_correct(question, draft_answer, source_docs=None):
         llm = get_llm()
 
         if source_docs:
-            context_text = "\n\n".join(doc.page_content for doc in source_docs)
+            context_text = "\n\n".join(doc.page_content for doc in source_docs)[:2000]
             context_block = f"\nReference context (document se):\n{context_text}\n"
         else:
             context_block = ""
@@ -373,7 +368,7 @@ def process_file(uploaded_file):
         tmp_path = tmp_file.name
 
     documents = load_file(tmp_path, file_extension)
-    splitter = RecursiveCharacterTextSplitter(chunk_size=4000, chunk_overlap=200)
+    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
     chunks = splitter.split_documents(documents)
 
     embeddings = get_embeddings()
@@ -387,9 +382,10 @@ def process_file(uploaded_file):
         chat["vectorstore"].add_documents(chunks)
 
     os.unlink(tmp_path)
+    # Reduced top-k from 5 to 2 to prevent token overflow
     chat["retriever"] = chat["vectorstore"].as_retriever(
         search_type="mmr",
-        search_kwargs={"k": 5, "fetch_k": 10, "lambda_mult": 0.7}
+        search_kwargs={"k": 2, "fetch_k": 5, "lambda_mult": 0.7}
     )
 
 
@@ -559,16 +555,17 @@ if user_query:
             try:
                 llm = get_llm()
 
-                # Format recent chat history (last 6 messages)
-                recent_messages = chat["messages"][-6:]
+                # Reduced history buffer from last 6 to last 3 messages
+                recent_messages = chat["messages"][-3:]
                 history_text = ""
                 for m in recent_messages:
                     role_label = "User" if m["role"] == "user" else "Assistant"
-                    history_text += f"{role_label}: {m['content']}\n"
+                    history_text += f"{role_label}: {m['content'][:300]}\n"
 
                 if chat["retriever"] is not None:
                     source_docs = chat["retriever"].invoke(user_query)
-                    context_text = "\n\n".join(doc.page_content for doc in source_docs)
+                    # Hard cap context length to 3000 chars to strictly prevent 400 errors
+                    context_text = "\n\n".join(doc.page_content for doc in source_docs)[:3000]
 
                     rag_prompt = ChatPromptTemplate.from_template(RAG_PROMPT_TEMPLATE)
                     chain = rag_prompt | llm | StrOutputParser()
