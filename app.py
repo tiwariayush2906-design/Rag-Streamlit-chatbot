@@ -292,7 +292,8 @@ def process_file(uploaded_file):
         tmp_path = tmp_file.name
 
     documents = load_file(tmp_path, file_extension)
-    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+    # Reduced chunk_size and overlap to cut down token payload
+    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
     chunks = splitter.split_documents(documents)
 
     embeddings = get_embeddings()
@@ -308,7 +309,7 @@ def process_file(uploaded_file):
     os.unlink(tmp_path)
     chat["retriever"] = chat["vectorstore"].as_retriever(
         search_type="mmr",
-        search_kwargs={"k": 2, "fetch_k": 5, "lambda_mult": 0.7}
+        search_kwargs={"k": 2, "fetch_k": 4, "lambda_mult": 0.7}
     )
 
 
@@ -478,15 +479,17 @@ if user_query:
             try:
                 llm = get_llm()
 
-                recent_messages = chat["messages"][-3:]
+                # Reduced chat history limit per prompt
+                recent_messages = chat["messages"][-2:]
                 history_text = ""
                 for m in recent_messages:
                     role_label = "User" if m["role"] == "user" else "Assistant"
-                    history_text += f"{role_label}: {m['content'][:300]}\n"
+                    history_text += f"{role_label}: {m['content'][:150]}\n"
 
                 if chat["retriever"] is not None:
                     source_docs = chat["retriever"].invoke(user_query)
-                    context_text = "\n\n".join(doc.page_content for doc in source_docs)[:2500]
+                    # Reduced context truncation cap to 1200 chars
+                    context_text = "\n\n".join(doc.page_content for doc in source_docs)[:1200]
 
                     rag_prompt = ChatPromptTemplate.from_template(RAG_PROMPT_TEMPLATE)
                     chain = rag_prompt | llm | StrOutputParser()
