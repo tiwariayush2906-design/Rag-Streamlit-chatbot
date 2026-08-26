@@ -7,3 +7,4 @@ langchain-text-splitters
 faiss-cpu
 pypdf
 fpdf2
+python-docx
