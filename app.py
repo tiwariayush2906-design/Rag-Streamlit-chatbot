@@ -294,9 +294,22 @@ def get_llm():
         st.error("🔑 GROQ_API_KEY nahi mili! Streamlit Cloud Settings me Secrets add karein.")
         st.stop()
     
-    # Primary active Groq model
+    # Active supported models on Groq
+    supported_models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+    
+    for model_name in supported_models:
+        try:
+            return ChatGroq(
+                model=model_name,
+                temperature=0,
+                groq_api_key=groq_api_key
+            )
+        except Exception:
+            continue
+            
+    # Default fallback
     return ChatGroq(
-        model="llama3-8b-8192",
+        model="llama-3.3-70b-versatile",
         temperature=0,
         groq_api_key=groq_api_key
     )
